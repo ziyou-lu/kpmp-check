@@ -1,0 +1,19 @@
+[package]
+name = "kpmp-check"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.51"
+kafka = "0.8.0"
+lazy_static = "1.4.0"
+rbatis = {version = "3.0.27", features = ["postgres"]}
+serde = {version = "1.0.132", features = ["derive"]}
+serde_derive = "1.0.132"
+serde_json = "1.0.73"
+toml = "0.5.8"
+tokio = { version ="1.10.0", features = ["full"] }
+rbson = "2.0"
+chrono = "0.4.19"
