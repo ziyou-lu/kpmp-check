@@ -1,4 +1,5 @@
 use serde::Deserialize;
+use crate::entity::image::KedaSubImageList;
 
 #[derive(Deserialize)]
 pub struct KedaFace {
@@ -14,4 +15,5 @@ pub struct KedaFaceListObject {
 pub struct KdStaticFace {
     pub FaceID: String,
     pub ShotTime: String,
+    pub KedaSubImageList: KedaSubImageList,
 }
