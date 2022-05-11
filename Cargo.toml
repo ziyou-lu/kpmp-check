@@ -17,3 +17,5 @@ toml = "0.5.8"
 tokio = { version ="1.10.0", features = ["full"] }
 rbson = "2.0"
 chrono = "0.4.19"
+future-utils = "0.12.1"
+futures = "0.3.21"

@@ -1,3 +1,6 @@
+use std::borrow::Borrow;
+use std::io::Read;
+use std::sync::Arc;
 use kafka::consumer::{Consumer, FetchOffset, GroupOffsetStorage, Message};
 use crate::config::Topic;
 use serde_json;
@@ -5,7 +8,9 @@ use anyhow::Error;
 use rbatis::crud::CRUD;
 use crate::entity::kedaface::*;
 use crate::CONTEXT;
-use crate::db::mapper::KdStaticFaceMapper;
+use crate::db::mapper::{KdStaticFaceMapper, StaticFaceMapper};
+use crate::entity::face::Face;
+use futures::executor::block_on;
 
 pub async fn start_consumer(hosts: Vec<String>, topic: Topic) {
     let mut consumer =
@@ -21,8 +26,8 @@ pub async fn start_consumer(hosts: Vec<String>, topic: Topic) {
         let topic_alias = topic.alias.clone();
         for ms in consumer.poll().unwrap().iter() {
             for m in ms.messages() {
-                println!("{:?}", String::from_utf8(Vec::from(m.clone().value)).unwrap());
-                let _ = do_message(topic_alias.clone(), m).await.unwrap();
+                let msg = String::from_utf8(Vec::from(m.clone().value)).unwrap();
+                let _ = do_message(topic_alias.clone(), msg).await;
             }
             consumer.consume_messageset(ms);
         }
@@ -38,15 +43,27 @@ fn parse_fetch_offset(fetch_offset: String) -> FetchOffset {
     }
 }
 
-async fn do_message(topic_name: String, message: &Message<'_>) -> Result<(), Error>{
+async fn do_message(topic_name: String, message: String) -> Result<(), Error>{
     match topic_name.as_str() { 
         "kpmp-analysis-kdstaticface" => {
-            let kedaface: KedaFace = serde_json::from_str(String::from_utf8(Vec::from(message.value)).unwrap().as_str())?;
+            println!("消费到二次静态人脸{:?}", message.clone());
+            let kedaface: KedaFace = serde_json::from_str(message.as_str())?;
             for obj in &kedaface.KedaFaceListObject.KedaFaceObject {
                 let mapper = KdStaticFaceMapper::from(obj.clone());
-                let result = CONTEXT.read().unwrap().rbatis.save(&mapper, &[]).await;
+                let result = &CONTEXT.inner.read().unwrap().rbatis.save(&mapper, &[]).await;
                 if let Err(e) = result {
-                    println!("{}", e);
+                    panic!("{}", e);
+                }
+            }
+        }
+        "kpmp-analysis-staticface" => {
+            println!("消费到一次静态人脸{:?}", message.clone());
+            let face: Face = serde_json::from_str(message.as_str())?;
+            for obj in &face.FaceList.FaceObject {
+                let mapper = StaticFaceMapper::from(obj.clone());
+                let result = &CONTEXT.inner.read().unwrap().rbatis.save(&mapper, &[]).await;
+                if let Err(e) = result {
+                    panic!("{}", e);
                 }
             }
         }
