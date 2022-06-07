@@ -7,35 +7,29 @@ hosts = ["10.165.16.63:19190","10.165.16.61:19190","10.165.16.62:19190"]
 #fallback_offset = "earliest"
 #group = "kpmp-check-kdstaticface-1"
 
-#[[topics]]
-#name = "kpmp-data-ingestion-staticperson-input-stress"
-#alias = "kpmp-data-ingestion-staticperson-input"
-#fallback_offset = "earliest"
-#group = "kpmp-check-kdstaticface-3"
+[[topics]]
+name = "kpmp-data-ingestion-staticperson-input-stress"
+alias = "kpmp-data-ingestion-staticperson-input"
+fallback_offset = "earliest"
+group = "kpmp-check-kdstaticface-1"
 
-#[[topics]]
+#@[[topics]]
 #name = "kpmp-analysis-staticface-stress"
 #alias = "kpmp-analysis-staticface"
 #fallback_offset = "earliest"
-#group = "kpmp-check-kdstaticface-1"
+#group = "kpmp-check-kdstaticface-2"
 
 #[[topics]]
 #name = "kpmp-analysis-kdstaticface-stress"
 #alias = "kpmp-analysis-kdstaticface"
 #fallback_offset = "earliest"
-#group = "kpmp-check-kdstaticface-2"
+#group = "kpmp-check-kdstaticface-1"
 
 #[[topics]]
 #name = "kpmp-analysis-face-stress"
 #alias = "kpmp-analysis-face"
 #fallback_offset = "earliest"
 #group = "kpmp-check-face"
-
-[[topics]]
-name = "aias-kdface-stress"
-alias = "aias-kdface"
-fallback_offset = "earliest"
-group = "kpmp-check-aias-kdface"
 
 [db]
 #链接地址 "mysql://user:password@ip:port/db"

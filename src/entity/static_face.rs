@@ -2,18 +2,18 @@ use serde::Deserialize;
 use crate::entity::image::KedaSubImageList;
 
 #[derive(Deserialize, Debug)]
-pub struct Face {
-    pub FaceList: FaceListObject
+pub struct StaticFace {
+    pub FaceList: StaticFaceListObject
 }
 
 #[derive(Deserialize, Debug)]
-pub struct FaceListObject {
-    pub FaceObject: Vec<FaceObj>,
+pub struct StaticFaceListObject {
+    pub FaceObject: Vec<StaticFaceObj>,
 }
 
 #[derive(Deserialize, Clone, Debug)]
-pub struct FaceObj {
+pub struct StaticFaceObj {
     pub FaceID: String,
     pub ShotTime: String,
-    pub DeviceID: String
+    pub TabID: String,
 }

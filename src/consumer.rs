@@ -1,16 +1,23 @@
 use std::borrow::Borrow;
-use std::io::Read;
+use std::io::{ErrorKind, Read};
+use std::rc::Rc;
 use std::sync::Arc;
 use kafka::consumer::{Consumer, FetchOffset, GroupOffsetStorage, Message};
 use crate::config::Topic;
 use serde_json;
 use anyhow::Error;
+use chrono::NaiveDateTime;
 use rbatis::crud::CRUD;
 use crate::entity::kedaface::*;
 use crate::CONTEXT;
-use crate::db::mapper::{KdStaticFaceMapper, StaticFaceMapper};
-use crate::entity::face::Face;
+use crate::db::mapper::{KdFaceMapper, AiasKdFaceMapper, FaceMapper, KdStaticFaceMapper, KpmpDataIngestionStaticFaceInputMapper, KpmpDataIngestionStaticPersonInputMapper, StaticFaceMapper};
 use futures::executor::block_on;
+use kafka::error::KafkaCode::OffsetOutOfRange;
+use kafka::producer::{Producer, Record};
+use crate::entity::aias_kdface::ImageList;
+use crate::entity::face::Face;
+use crate::entity::kpmp_face::KpmpPersonFace;
+use crate::entity::static_face::{StaticFace, StaticFaceObj};
 
 pub async fn start_consumer(hosts: Vec<String>, topic: Topic) {
     let mut consumer =
@@ -27,7 +34,10 @@ pub async fn start_consumer(hosts: Vec<String>, topic: Topic) {
         for ms in consumer.poll().unwrap().iter() {
             for m in ms.messages() {
                 let msg = String::from_utf8(Vec::from(m.clone().value)).unwrap();
-                let _ = do_message(topic_alias.clone(), msg).await;
+                let err = do_message(topic_alias.clone(), msg, ms.partition(), m.offset).await;
+                if let Err(er) = err {
+                    println!("{}", er);
+                }
             }
             consumer.consume_messageset(ms);
         }
@@ -43,11 +53,12 @@ fn parse_fetch_offset(fetch_offset: String) -> FetchOffset {
     }
 }
 
-async fn do_message(topic_name: String, message: String) -> Result<(), Error>{
+async fn do_message(topic_name: String, message: String, partition: i32, offset: i64) -> Result<(), Error>{
     match topic_name.as_str() { 
         "kpmp-analysis-kdstaticface" => {
-            println!("消费到二次静态人脸{:?}", message.clone());
+
             let kedaface: KedaFace = serde_json::from_str(message.as_str())?;
+            println!("消费到二次静态人脸{:?}", kedaface);
             for obj in &kedaface.KedaFaceListObject.KedaFaceObject {
                 let mapper = KdStaticFaceMapper::from(obj.clone());
                 let result = &CONTEXT.inner.read().unwrap().rbatis.save(&mapper, &[]).await;
@@ -56,14 +67,88 @@ async fn do_message(topic_name: String, message: String) -> Result<(), Error>{
                 }
             }
         }
-        "kpmp-analysis-staticface" => {
-            println!("消费到一次静态人脸{:?}", message.clone());
+        "kpmp-analysis-kdface" => {
+
+            let kedaface: KedaFace = serde_json::from_str(message.as_str())?;
+            println!("消费到二次人脸{:?}", kedaface);
+            for obj in &kedaface.KedaFaceListObject.KedaFaceObject {
+                let mut mapper = KdFaceMapper::from(obj.clone());
+                mapper.DataOffset = offset;
+                mapper.DataPartition = partition;
+                let result = &CONTEXT.inner.read().unwrap().rbatis.save(&mapper, &[]).await;
+                if let Err(e) = result {
+                    panic!("{}", e);
+                }
+            }
+        }
+        "kpmp-analysis-face" => {
+
             let face: Face = serde_json::from_str(message.as_str())?;
+            println!("消费到一次动态人脸{:?}", face);
+            for obj in &face.FaceList.FaceObject {
+                let mapper = FaceMapper::from(obj.clone());
+                let result = &CONTEXT.inner.read().unwrap().rbatis.save(&mapper, &[]).await;
+                if let Err(e) = result {
+                    panic!("{}", e);
+                }
+            }
+        }
+        "kpmp-analysis-staticface" => {
+
+            let face: StaticFace = serde_json::from_str(message.as_str())?;
+            println!("消费到一次静态人脸{:?}", face);
             for obj in &face.FaceList.FaceObject {
                 let mapper = StaticFaceMapper::from(obj.clone());
                 let result = &CONTEXT.inner.read().unwrap().rbatis.save(&mapper, &[]).await;
                 if let Err(e) = result {
                     panic!("{}", e);
+                }
+            }
+        }
+        "kpmp-data-ingestion-staticperson-input" => {
+
+            let face: KpmpPersonFace = serde_json::from_str(message.as_str())?;
+            println!("消费到接入人像中台录入静态数据{:?}", face);
+            if NaiveDateTime::parse_from_str(face.faces.get(0).unwrap().ShotTime.as_str(), "%Y%m%d%H%M%S").unwrap().timestamp() >= NaiveDateTime::parse_from_str("2022-05-31 13:00:00", "%Y-%m-%d %H:%M:%S").unwrap().timestamp()
+            && NaiveDateTime::parse_from_str(face.faces.get(0).unwrap().ShotTime.as_str(), "%Y%m%d%H%M%S").unwrap().timestamp() < NaiveDateTime::parse_from_str("2022-06-01 00:00:00", "%Y-%m-%d %H:%M:%S").unwrap().timestamp(){
+                Producer::from_hosts(vec!["10.165.76.45:19092".to_owned()]).create().unwrap().send(
+                    &Record::from_value("kpmp-data-ingestion-staticperson-input-debug", message.as_bytes())
+                );
+            }
+
+            /*for obj in &face.faces {
+                let mapper = KpmpDataIngestionStaticPersonInputMapper::from(obj.clone());
+                let result = &CONTEXT.inner.read().unwrap().rbatis.save(&mapper, &[]).await;
+                if let Err(e) = result {
+                    panic!("{}", e);
+                }
+            }*/
+        }
+        "kpmp-data-ingestion-staticface-input" => {
+
+            let face: StaticFaceObj = serde_json::from_str(message.as_str())?;
+            println!("消费到接入人像中台录入静态数据{:?}", face);
+            let mapper = KpmpDataIngestionStaticFaceInputMapper::from(face.clone());
+            let result = &CONTEXT.inner.read().unwrap().rbatis.save(&mapper, &[]).await;
+            if let Err(e) = result {
+                panic!("{}", e);
+            }
+        }
+        "aias-kdface" => {
+
+            let image_list: ImageList = serde_json::from_str(message.as_str())?;
+            println!("消费到一次动态人脸{:?}", image_list);
+            for obj in &image_list.ImageListObject.Image {
+                for kdface in &obj.KedaFaceList.KedaFaceObject {
+                    let mut mapper = AiasKdFaceMapper::from(kdface.clone());
+                    if mapper.ImageID != "" {
+                        mapper.DataPartition = partition;
+                        mapper.DataOffset = offset;
+                        let result = &CONTEXT.inner.read().unwrap().rbatis.save(&mapper, &[]).await;
+                        if let Err(e) = result {
+                            panic!("{}", e);
+                        }
+                    }
                 }
             }
         }
